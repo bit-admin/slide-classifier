@@ -55,7 +55,12 @@ pip install transformers datasets timm pillow scikit-learn
 - No rotation or cropping to preserve slide characteristics
 - Maintains aspect ratio and content integrity
 
-### 4. Comprehensive Monitoring
+### 4. Early Stopping & Fine-tuning
+- **Early Stopping**: Automatically stops training when validation loss stops improving
+- **Fine-tuning**: Resume training from saved checkpoints with full state restoration
+- **Smart Checkpointing**: Saves model, optimizer, scheduler, and training history
+
+### 5. Comprehensive Monitoring
 - Real-time training metrics
 - Detailed classification reports
 - Confusion matrix analysis
@@ -65,13 +70,38 @@ pip install transformers datasets timm pillow scikit-learn
 
 ### Training
 
+**Basic Training:**
 ```bash
 python train.py
 ```
 
+**Resume Training (Fine-tuning):**
+```bash
+python train.py --resume models/slide_classifier_mobilenetv4.pth
+```
+
+**Custom Configuration:**
+```bash
+python train.py --batch_size 16 --learning_rate 0.0005 --early_stopping_patience 15
+```
+
+### Command Line Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--resume` | None | Path to checkpoint to resume training from |
+| `--data_dir` | 'dataset' | Path to dataset directory |
+| `--batch_size` | 32 | Batch size for training |
+| `--num_epochs` | 50 | Number of epochs to train |
+| `--learning_rate` | 0.001 | Learning rate |
+| `--weight_decay` | 1e-4 | Weight decay |
+| `--early_stopping_patience` | 10 | Early stopping patience (epochs) |
+| `--save_dir` | 'models' | Directory to save models |
+| `--model_name` | 'slide_classifier_mobilenetv4.pth' | Model filename |
+
 ### Configuration
 
-The script uses these default settings (modify in `train.py` if needed):
+The script uses these default settings:
 
 ```python
 config = {
@@ -147,15 +177,42 @@ Optimized for M4 Mac mini (10-core, 16GB):
 1. **Data Loading**: Automatic dataset discovery and class mapping
 2. **Train/Val Split**: 80/20 split with stratification
 3. **Model Loading**: Pretrained MobileNetV4 with custom classifier
-4. **Training Loop**: 50 epochs with early stopping potential
+4. **Training Loop**: Up to 50 epochs with early stopping (default: 10 patience)
 5. **Learning Rate**: Adaptive reduction on plateau
 6. **Model Saving**: Best model based on validation accuracy
+
+## Early Stopping & Fine-tuning
+
+### Early Stopping
+- **Purpose**: Prevents overfitting and saves training time
+- **Default Patience**: 10 epochs (configurable with `--early_stopping_patience`)
+- **Monitoring**: Validation loss with minimum improvement threshold (0.001)
+- **Behavior**: Automatically restores best model weights when stopping
+
+### Fine-tuning (Resume Training)
+- **Use Case**: Continue training from a saved checkpoint
+- **State Restoration**: Restores model, optimizer, scheduler, and training history
+- **Command**: `python train.py --resume models/slide_classifier_mobilenetv4.pth`
+- **Benefits**:
+  - Continue training with new data
+  - Adjust hyperparameters mid-training
+  - Recover from interrupted training sessions
+
+### Checkpoint Contents
+Each saved model includes:
+- Model weights (`model_state_dict`)
+- Optimizer state (`optimizer_state_dict`)
+- Scheduler state (`scheduler_state_dict`)
+- Training metrics history
+- Class mappings and configuration
+- Best validation accuracy achieved
 
 ## Expected Training Time
 
 On M4 Mac mini:
 - ~2-3 minutes per epoch
-- Total training time: ~1.5-2.5 hours for 50 epochs
+- **With Early Stopping**: Typically 15-25 epochs (~30-75 minutes)
+- **Full 50 epochs**: ~1.5-2.5 hours (if early stopping doesn't trigger)
 
 ## Monitoring Training
 
