@@ -1,6 +1,7 @@
-dataset/
+dataset*/
+models*/
+*.mlproj
 .DS_Store
 .idea/
 
 instruction.md
-models/

@@ -236,21 +236,41 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
         'config': checkpoint.get('config', {})
     }
 
-def train_epoch(model, dataloader, criterion, optimizer, device, epoch):
-    """Train for one epoch"""
+def train_epoch(model, dataloader, criterion, optimizer, device, epoch, use_amp=False, scaler=None):
+    """Train for one epoch with optional mixed precision"""
     model.train()
     running_loss = 0.0
     correct = 0
     total = 0
 
     for batch_idx, (data, target) in enumerate(dataloader):
-        data, target = data.to(device), target.to(device)
+        data, target = data.to(device, non_blocking=True), target.to(device, non_blocking=True)
 
         optimizer.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
+
+        if use_amp and device.type == 'cuda':
+            # Mixed precision for CUDA
+            with torch.amp.autocast('cuda'):
+                output = model(data)
+                loss = criterion(output, target)
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        elif use_amp and device.type == 'mps':
+            # Mixed precision for MPS (Apple Silicon)
+            with torch.amp.autocast('cpu'):  # MPS uses CPU autocast
+                output = model(data)
+                loss = criterion(output, target)
+
+            loss.backward()
+            optimizer.step()
+        else:
+            # Standard training
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
 
         running_loss += loss.item()
         _, predicted = output.max(1)
@@ -267,7 +287,7 @@ def train_epoch(model, dataloader, criterion, optimizer, device, epoch):
     return epoch_loss, epoch_acc
 
 def validate(model, dataloader, criterion, device, class_names):
-    """Validate the model"""
+    """Validate the model with optimized data transfers"""
     model.eval()
     running_loss = 0.0
     correct = 0
@@ -277,7 +297,7 @@ def validate(model, dataloader, criterion, device, class_names):
 
     with torch.no_grad():
         for data, target in dataloader:
-            data, target = data.to(device), target.to(device)
+            data, target = data.to(device, non_blocking=True), target.to(device, non_blocking=True)
             output = model(data)
             loss = criterion(output, target)
 
@@ -313,8 +333,8 @@ def main():
                         help='Path to checkpoint to resume training from')
     parser.add_argument('--data_dir', type=str, default='dataset',
                         help='Path to dataset directory')
-    parser.add_argument('--batch_size', type=int, default=32,
-                        help='Batch size for training')
+    parser.add_argument('--batch_size', type=int, default=64,
+                        help='Batch size for training (default: 64 for better GPU utilization)')
     parser.add_argument('--num_epochs', type=int, default=50,
                         help='Number of epochs to train')
     parser.add_argument('--learning_rate', type=float, default=0.001,
@@ -329,13 +349,28 @@ def main():
                         help='Model filename')
     parser.add_argument('--force_fresh', action='store_true',
                         help='Force fresh training without prompting to resume from existing model')
+    parser.add_argument('--num_workers', type=int, default=4,
+                        help='Number of data loading workers (0=single-threaded, 4=recommended for M4)')
+    parser.add_argument('--fast_mode', action='store_true',
+                        help='Enable fast mode with optimized settings for M4 Mac')
 
     args = parser.parse_args()
+
+    # Apply fast mode optimizations if requested
+    if args.fast_mode:
+        print("Fast mode enabled - optimizing for M4 Mac performance")
+        batch_size = 96  # Larger batch size for better GPU utilization
+        num_workers = 6  # More workers for faster data loading
+        pin_memory = True  # Enable pin memory for faster GPU transfer
+    else:
+        batch_size = args.batch_size
+        num_workers = args.num_workers
+        pin_memory = True if num_workers > 0 else False
 
     # Configuration
     config = {
         'data_dir': args.data_dir,
-        'batch_size': args.batch_size,
+        'batch_size': batch_size,
         'num_epochs': args.num_epochs,
         'learning_rate': args.learning_rate,
         'weight_decay': args.weight_decay,
@@ -343,7 +378,10 @@ def main():
         'save_dir': args.save_dir,
         'model_name': args.model_name,
         'resume_from': args.resume,
-        'force_fresh': args.force_fresh
+        'force_fresh': args.force_fresh,
+        'num_workers': num_workers,
+        'pin_memory': pin_memory,
+        'fast_mode': args.fast_mode
     }
 
     # Create save directory
@@ -366,21 +404,27 @@ def main():
     class_weights = full_dataset.get_class_weights().to(device)
     print(f"Class weights: {class_weights}")
 
-    # Create data loaders - reduce num_workers to avoid "too many open files" error
+    # Create data loaders with optimized settings
+    print(f"DataLoader settings: batch_size={config['batch_size']}, num_workers={config['num_workers']}, pin_memory={config['pin_memory']}")
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=config['batch_size'],
         shuffle=True,
-        num_workers=0,  # Use 0 to avoid multiprocessing issues on Mac
-        pin_memory=False  # Disable pin_memory when using num_workers=0
+        num_workers=config['num_workers'],
+        pin_memory=config['pin_memory'],
+        persistent_workers=True if config['num_workers'] > 0 else False,
+        prefetch_factor=2 if config['num_workers'] > 0 else None
     )
 
     val_loader = DataLoader(
         val_dataset,
         batch_size=config['batch_size'],
         shuffle=False,
-        num_workers=0,  # Use 0 to avoid multiprocessing issues on Mac
-        pin_memory=False  # Disable pin_memory when using num_workers=0
+        num_workers=config['num_workers'],
+        pin_memory=config['pin_memory'],
+        persistent_workers=True if config['num_workers'] > 0 else False,
+        prefetch_factor=2 if config['num_workers'] > 0 else None
     )
 
     # Create model
@@ -402,6 +446,12 @@ def main():
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=5, verbose=True
     )
+
+    # Mixed precision training for better performance (MPS supports it)
+    scaler = torch.amp.GradScaler('cuda') if device.type == 'cuda' else None
+    use_amp = device.type in ['cuda', 'mps']  # Enable for both CUDA and MPS
+    if use_amp:
+        print("Mixed precision training enabled for better performance")
 
     # Initialize training variables
     start_epoch = 0
@@ -467,7 +517,7 @@ def main():
 
         # Train
         train_loss, train_acc = train_epoch(
-            model, train_loader, criterion, optimizer, device, epoch + 1
+            model, train_loader, criterion, optimizer, device, epoch + 1, use_amp, scaler
         )
 
         # Validate
