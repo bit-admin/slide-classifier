@@ -74,10 +74,16 @@ pip install transformers datasets timm pillow scikit-learn
 ```bash
 python train.py
 ```
+*Note: If a previous model exists, the script will automatically detect it and ask if you want to resume training.*
 
 **Resume Training (Fine-tuning):**
 ```bash
 python train.py --resume models/slide_classifier_mobilenetv4.pth
+```
+
+**Force Fresh Training:**
+```bash
+python train.py --force_fresh
 ```
 
 **Custom Configuration:**
@@ -98,6 +104,7 @@ python train.py --batch_size 16 --learning_rate 0.0005 --early_stopping_patience
 | `--early_stopping_patience` | 10 | Early stopping patience (epochs) |
 | `--save_dir` | 'models' | Directory to save models |
 | `--model_name` | 'slide_classifier_mobilenetv4.pth' | Model filename |
+| `--force_fresh` | False | Force fresh training without prompting to resume |
 
 ### Configuration
 
@@ -190,13 +197,19 @@ Optimized for M4 Mac mini (10-core, 16GB):
 - **Behavior**: Automatically restores best model weights when stopping
 
 ### Fine-tuning (Resume Training)
-- **Use Case**: Continue training from a saved checkpoint
+- **Automatic Detection**: Script automatically detects existing models and prompts to resume
+- **Manual Resume**: Use `--resume path/to/model.pth` to specify a checkpoint
+- **Force Fresh**: Use `--force_fresh` to skip resume prompt and start fresh
 - **State Restoration**: Restores model, optimizer, scheduler, and training history
-- **Command**: `python train.py --resume models/slide_classifier_mobilenetv4.pth`
 - **Benefits**:
   - Continue training with new data
   - Adjust hyperparameters mid-training
   - Recover from interrupted training sessions
+
+### Model Naming Convention
+- **Default Name**: `slide_classifier_mobilenetv4.pth`
+- **Location**: `models/` directory (configurable with `--save_dir`)
+- **Custom Name**: Use `--model_name your_model.pth` for custom naming
 
 ### Checkpoint Contents
 Each saved model includes:

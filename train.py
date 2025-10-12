@@ -327,6 +327,8 @@ def main():
                         help='Directory to save models')
     parser.add_argument('--model_name', type=str, default='slide_classifier_mobilenetv4.pth',
                         help='Model filename')
+    parser.add_argument('--force_fresh', action='store_true',
+                        help='Force fresh training without prompting to resume from existing model')
 
     args = parser.parse_args()
 
@@ -340,7 +342,8 @@ def main():
         'early_stopping_patience': args.early_stopping_patience,
         'save_dir': args.save_dir,
         'model_name': args.model_name,
-        'resume_from': args.resume
+        'resume_from': args.resume,
+        'force_fresh': args.force_fresh
     }
 
     # Create save directory
@@ -416,6 +419,34 @@ def main():
         start_epoch = checkpoint_info['start_epoch']
         best_val_acc = checkpoint_info['best_val_acc']
         print(f"Resuming training from epoch {start_epoch}")
+    else:
+        # Check if a previous best model exists and offer to resume
+        model_path = os.path.join(config['save_dir'], config['model_name'])
+        if os.path.exists(model_path) and not config['force_fresh']:
+            print(f"\nFound existing model: {model_path}")
+            try:
+                # Try to load checkpoint info to show details
+                checkpoint = torch.load(model_path, map_location=device)
+                prev_epoch = checkpoint.get('epoch', 'unknown')
+                prev_acc = checkpoint.get('best_val_acc', 'unknown')
+                print(f"Previous training: Epoch {prev_epoch}, Best Val Acc: {prev_acc:.2f}%")
+
+                response = input("Do you want to resume from this model? (y/n): ").lower().strip()
+                if response in ['y', 'yes']:
+                    checkpoint_info = load_checkpoint(
+                        model_path, model, optimizer, scheduler
+                    )
+                    start_epoch = checkpoint_info['start_epoch']
+                    best_val_acc = checkpoint_info['best_val_acc']
+                    print(f"Resuming training from epoch {start_epoch}")
+                else:
+                    print("Starting fresh training (existing model will be overwritten)")
+            except Exception as e:
+                print(f"Could not read existing model file: {e}")
+                print("Starting fresh training")
+        elif os.path.exists(model_path) and config['force_fresh']:
+            print(f"Found existing model but --force_fresh specified. Starting fresh training.")
+            print(f"Existing model will be overwritten: {model_path}")
 
     # Initialize early stopping
     early_stopping = EarlyStopping(
