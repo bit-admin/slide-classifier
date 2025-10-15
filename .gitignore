@@ -1,6 +1,7 @@
 dataset*/
 models*/
 *.mlproj
+test/
 .DS_Store
 .idea/
 

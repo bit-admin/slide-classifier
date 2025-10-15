@@ -309,7 +309,71 @@ After training:
 
 ## Model Inference
 
-To use the trained model:
+### Using the Inference Script (Recommended)
+
+The project includes a comprehensive inference script (`inference.py`) for easy model usage:
+
+**Basic Usage:**
+```bash
+# Process all images in test directory (default)
+python inference.py
+
+# Process a single image
+python inference.py --input path/to/image.png
+
+# Process a specific directory
+python inference.py --input path/to/directory
+
+# Save results to JSON file
+python inference.py --output results.json
+
+# Show detailed probabilities for all classes
+python inference.py --show_probabilities
+
+# Set confidence threshold
+python inference.py --confidence_threshold 0.7
+```
+
+**Command Line Arguments:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--model` | `models/slide_classifier_mobilenetv4.pth` | Path to trained model checkpoint |
+| `--input` | `test` | Path to input image or directory |
+| `--output` | None | Path to save results JSON file |
+| `--confidence_threshold` | 0.5 | Minimum confidence threshold for predictions |
+| `--show_probabilities` | False | Show probabilities for all classes |
+| `--max_display` | 20 | Maximum number of detailed results to display (0 for all) |
+| `--quiet` | False | Only show summary, not detailed results |
+
+**Example Output:**
+```
+Using device: mps
+Loading model from: models/slide_classifier_mobilenetv4.pth
+Found 7 classes: ['may_be_slide_powerpoint_edit_mode', 'may_be_slide_powerpoint_side_screen', 'not_slide_black_or_blue_screen', 'not_slide_desktop', 'not_slide_no_signal', 'not_slide_others', 'slide']
+Model trained for 25 epochs, best validation accuracy: 94.32%
+Found 37 images in test
+Processing image 1/37: Slide_1760272553436.png
+
+============================================================
+PREDICTION SUMMARY
+============================================================
+Total images processed: 37
+Successful predictions: 37
+Errors: 0
+Above confidence threshold: 35/37
+Average confidence: 0.892
+
+Class Distribution:
+----------------------------------------
+slide                               32 ( 86.5%)
+not_slide_others                     3 (  8.1%)
+not_slide_desktop                    2 (  5.4%)
+```
+
+### Manual Inference (Advanced)
+
+For custom integration, you can use the model directly:
 
 ```python
 import torch
@@ -341,3 +405,15 @@ with torch.no_grad():
 class_names = checkpoint['class_names']
 print(f"Predicted: {class_names[predicted_class]}")
 ```
+
+### Inference Features
+
+The inference script provides:
+
+1. **Batch Processing**: Process entire directories of images efficiently
+2. **Confidence Scoring**: Get confidence scores for predictions with customizable thresholds
+3. **Class Probabilities**: View probabilities for all classes, not just the top prediction
+4. **Error Handling**: Graceful handling of corrupted or unreadable images
+5. **Performance Metrics**: Processing time and throughput statistics
+6. **JSON Export**: Save results for further analysis or integration
+7. **Metal Acceleration**: Automatic MPS (Metal Performance Shaders) support for M4 Mac
