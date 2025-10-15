@@ -1,0 +1,38 @@
+{
+  "name": "slide-classifier",
+  "version": "1.0.0",
+  "description": "Node.js inference script for slide classification using ONNX Runtime",
+  "main": "inference.js",
+  "bin": {
+    "slide-classifier": "./inference.js"
+  },
+  "scripts": {
+    "start": "node inference.js",
+    "test": "node inference.js --input test --show-probabilities",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "onnxruntime-node": "^1.16.3",
+    "sharp": "^0.32.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "machine-learning",
+    "image-classification",
+    "onnx",
+    "slide-detection",
+    "mobilenetv4"
+  ],
+  "author": "Slide Classifier Project",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "."
+  }
+}

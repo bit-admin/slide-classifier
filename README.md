@@ -417,3 +417,138 @@ The inference script provides:
 5. **Performance Metrics**: Processing time and throughput statistics
 6. **JSON Export**: Save results for further analysis or integration
 7. **Metal Acceleration**: Automatic MPS (Metal Performance Shaders) support for M4 Mac
+
+## ONNX Model Conversion
+
+The project includes a conversion script to export the trained PyTorch model to ONNX format for deployment and inference in production environments.
+
+### Converting to ONNX
+
+**Basic Conversion:**
+```bash
+python convert_to_onnx.py
+```
+
+**Custom Configuration:**
+```bash
+python convert_to_onnx.py --model_path models/slide_classifier_mobilenetv4.pth \
+                          --output_dir models \
+                          --output_name slide_classifier_mobilenetv4.onnx \
+                          --verify
+```
+
+**Skip Verification (faster):**
+```bash
+python convert_to_onnx.py --no_verify
+```
+
+### Command Line Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--model_path` | `models/slide_classifier_mobilenetv4.pth` | Path to the trained PyTorch model |
+| `--output_dir` | `models` | Output directory for ONNX model |
+| `--output_name` | `slide_classifier_mobilenetv4.onnx` | Output ONNX model filename |
+| `--opset_version` | 11 | ONNX opset version |
+| `--verify` | True | Verify ONNX model against PyTorch model |
+| `--no_verify` | False | Skip ONNX model verification |
+
+### Output Files
+
+After conversion, you'll find:
+
+- `models/slide_classifier_mobilenetv4.onnx` - ONNX model file
+- `models/model_info.json` - Model metadata and configuration
+
+### Model Information
+
+The conversion script generates a `model_info.json` file containing:
+
+```json
+{
+  "class_names": ["may_be_slide_powerpoint_edit_mode", "may_be_slide_powerpoint_side_screen", ...],
+  "num_classes": 7,
+  "input_shape": [1, 3, 256, 256],
+  "input_size": [256, 256],
+  "normalization": {
+    "mean": [0.485, 0.456, 0.406],
+    "std": [0.229, 0.224, 0.225]
+  },
+  "model_architecture": "mobilenetv4_conv_medium.e500_r256_in1k",
+  "training_info": {
+    "best_val_acc": 94.32,
+    "epoch": 25,
+    "config": {...}
+  }
+}
+```
+
+### Using ONNX Model
+
+**Python Example:**
+```python
+import onnxruntime as ort
+import numpy as np
+from PIL import Image
+from torchvision import transforms
+import json
+
+# Load model info
+with open('models/model_info.json', 'r') as f:
+    model_info = json.load(f)
+
+# Create ONNX Runtime session
+session = ort.InferenceSession('models/slide_classifier_mobilenetv4.onnx')
+
+# Prepare image preprocessing
+transform = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=model_info['normalization']['mean'],
+        std=model_info['normalization']['std']
+    )
+])
+
+# Load and preprocess image
+image = Image.open('path/to/image.png').convert('RGB')
+input_tensor = transform(image).unsqueeze(0).numpy()
+
+# Run inference
+outputs = session.run(None, {'input': input_tensor})
+predictions = outputs[0]
+
+# Get predicted class
+predicted_class_idx = np.argmax(predictions, axis=1)[0]
+predicted_class = model_info['class_names'][predicted_class_idx]
+confidence = np.max(predictions)
+
+print(f"Predicted: {predicted_class} (confidence: {confidence:.3f})")
+```
+
+### ONNX Model Features
+
+1. **Cross-Platform Compatibility**: Deploy on various platforms and frameworks
+2. **Optimized Inference**: Better performance for production deployment
+3. **Smaller File Size**: Typically smaller than PyTorch checkpoints
+4. **Framework Agnostic**: Use with ONNX Runtime, TensorRT, OpenVINO, etc.
+5. **Model Verification**: Automatic verification ensures output consistency
+6. **Metadata Preservation**: All training information and class mappings preserved
+
+### Deployment Options
+
+The ONNX model can be deployed using:
+
+- **ONNX Runtime**: Cross-platform inference (recommended)
+- **TensorRT**: NVIDIA GPU acceleration
+- **OpenVINO**: Intel hardware optimization
+- **Core ML**: Apple device deployment
+- **Web Deployment**: ONNX.js for browser inference
+- **Mobile**: ONNX Runtime Mobile for iOS/Android
+
+### Performance Considerations
+
+- **Input Shape**: Fixed at (1, 3, 256, 256) but supports dynamic batch sizes
+- **Preprocessing**: Ensure proper ImageNet normalization
+- **Memory Usage**: ~25-30MB model size
+- **Inference Speed**: Typically 2-5x faster than PyTorch for single image inference

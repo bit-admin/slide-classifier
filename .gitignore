@@ -4,5 +4,6 @@ models*/
 test/
 .DS_Store
 .idea/
+node_modules/
 
 instruction.md
