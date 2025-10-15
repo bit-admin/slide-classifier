@@ -67,38 +67,55 @@ class SlideClassifier {
     }
 
     /**
-     * Preprocess image for model input
+     * Preprocess image for model input - matches PyTorch transforms exactly
      * @param {string} imagePath - Path to the image file
      * @returns {Promise<Float32Array>} Preprocessed image tensor
      */
     async preprocessImage(imagePath) {
         try {
-            // Load and resize image to 256x256
-            const imageBuffer = await sharp(imagePath)
-                .resize(256, 256)
+            // Step 1: Load image and resize to 256x256 (matching PyTorch transforms.Resize behavior)
+            // PyTorch Resize uses PIL.Image.LANCZOS by default and ignores aspect ratio when given tuple
+            const { data, info } = await sharp(imagePath)
+                .resize(256, 256, {
+                    fit: 'fill',           // Ignore aspect ratio, stretch to exact dimensions (matches PyTorch)
+                    kernel: sharp.kernel.lanczos3  // Closest to PIL's LANCZOS
+                })
+                .removeAlpha()         // Ensure RGB only (no alpha channel)
                 .raw()
-                .toBuffer();
+                .toBuffer({ resolveWithObject: true });
 
-            // Convert to RGB if needed and normalize
-            const rgbBuffer = await sharp(imageBuffer, {
-                raw: { width: 256, height: 256, channels: 3 }
-            }).raw().toBuffer();
+            // Verify dimensions
+            if (info.width !== 256 || info.height !== 256 || info.channels !== 3) {
+                throw new Error(`Unexpected image dimensions: ${info.width}x${info.height}x${info.channels}, expected 256x256x3`);
+            }
 
-            // Convert to Float32Array and apply ImageNet normalization
+            // Step 2: Convert to tensor and normalize (matching PyTorch transforms.ToTensor + Normalize)
             const float32Data = new Float32Array(3 * 256 * 256);
+
+            // ImageNet normalization values (same as PyTorch)
             const mean = [0.485, 0.456, 0.406];
             const std = [0.229, 0.224, 0.225];
 
+            // Convert from HWC (Sharp format) to NCHW (PyTorch/ONNX format)
+            // PyTorch transforms.ToTensor() does: pixel = pixel / 255.0
+            // PyTorch transforms.Normalize() does: pixel = (pixel - mean) / std
             for (let c = 0; c < 3; c++) {
                 for (let h = 0; h < 256; h++) {
                     for (let w = 0; w < 256; w++) {
-                        const pixelIndex = h * 256 + w;
-                        const rgbIndex = pixelIndex * 3 + c;
+                        // Sharp buffer is in HWC format: [height, width, channels]
+                        const sharpIndex = (h * 256 + w) * 3 + c;
+
+                        // ONNX tensor is in NCHW format: [batch, channels, height, width]
                         const tensorIndex = c * 256 * 256 + h * 256 + w;
 
-                        // Normalize pixel value to [0, 1] then apply ImageNet normalization
-                        const normalizedPixel = (rgbBuffer[rgbIndex] / 255.0 - mean[c]) / std[c];
-                        float32Data[tensorIndex] = normalizedPixel;
+                        // Apply same transforms as PyTorch:
+                        // 1. Convert to [0,1] range (ToTensor equivalent)
+                        const normalizedPixel = data[sharpIndex] / 255.0;
+
+                        // 2. Apply ImageNet normalization (Normalize equivalent)
+                        const finalPixel = (normalizedPixel - mean[c]) / std[c];
+
+                        float32Data[tensorIndex] = finalPixel;
                     }
                 }
             }
