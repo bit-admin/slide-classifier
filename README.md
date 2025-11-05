@@ -8,20 +8,18 @@ The dataset contains 7 classes with significant imbalance:
 
 ```
 dataset/
-├── may_be_slide_powerpoint_edit_mode/     (36 images)
-├── may_be_slide_powerpoint_side_screen/   (15 images)
-├── not_slide_black_or_blue_screen/           (4 images)
-├── not_slide_desktop/                     (62 images)
-├── not_slide_no_signal/                   (26 images)
-├── not_slide_others/                      (479 images)
-└── slide/                                 (2530 images)
+├── may_be_slide_powerpoint_edit_mode/
+├── may_be_slide_powerpoint_side_screen/
+├── not_slide_black_or_blue_screen/
+├── not_slide_desktop/
+├── not_slide_no_signal/
+├── not_slide_others/
+└── slide/
 ```
-
-**Total: 3,152 images across 7 classes**
 
 ## Environment Setup
 
-You've already set up the environment. For reference:
+For reference:
 
 ```bash
 conda create --name trainning python=3.11
@@ -149,7 +147,7 @@ The script provides detailed metrics including:
 
 ## Data Augmentation Strategy
 
-Based on your business requirements:
+Based on the business requirements:
 
 ```python
 transforms.ColorJitter(
@@ -169,15 +167,6 @@ The script dynamically calculates weights using:
 ```
 weight_i = total_samples / (num_classes × class_i_samples)
 ```
-
-Current weights for your dataset:
-- `may_be_slide_powerpoint_edit_mode`: 12.51×
-- `may_be_slide_powerpoint_side_screen`: 30.02×
-- `not_slide_black_or_blue_screen`: 112.57× (highest due to only 4 samples)
-- `not_slide_desktop`: 7.26×
-- `not_slide_no_signal`: 17.32×
-- `not_slide_others`: 0.94×
-- `slide`: 0.18× (lowest due to 2530 samples)
 
 ## Performance Optimizations
 
@@ -242,25 +231,6 @@ Each saved model includes:
 - Class mappings and configuration
 - Best validation accuracy achieved
 
-## Expected Training Time
-
-On M4 Mac mini with different modes:
-
-### Standard Mode (Default)
-- **Per Epoch**: ~2 minutes
-- **With Early Stopping**: 15-25 epochs (~30-50 minutes)
-- **Full 50 epochs**: ~1.5 hours
-
-### Fast Mode (`--fast_mode`)
-- **Per Epoch**: ~1.2-1.5 minutes
-- **With Early Stopping**: 15-25 epochs (~18-38 minutes)
-- **Full 50 epochs**: ~1 hour
-
-### Conservative Mode (if needed)
-- **Per Epoch**: ~3 minutes
-- **With Early Stopping**: 15-25 epochs (~45-75 minutes)
-- **Full 50 epochs**: ~2.5 hours
-
 ## Monitoring Training
 
 The script outputs:
@@ -271,7 +241,7 @@ The script outputs:
 
 ## Business Context Considerations
 
-The model accounts for your specific use cases:
+The model accounts for the specific use cases:
 
 - **not_slide_no_signal**: Same image with possible distortion
 - **not_slide_desktop**: Same wallpaper, varying icon layouts
@@ -437,6 +407,18 @@ python convert_to_onnx.py --model_path models/slide_classifier_mobilenetv4.pth \
                           --verify
 ```
 
+**With Quantization (Recommended for Production):**
+```bash
+# INT8 quantization (smaller size, faster inference)
+python convert_to_onnx.py --quantization int8
+
+# UINT8 quantization
+python convert_to_onnx.py --quantization uint8
+
+# FP16 quantization (half precision)
+python convert_to_onnx.py --quantization fp16
+```
+
 **Skip Verification (faster):**
 ```bash
 python convert_to_onnx.py --no_verify
@@ -452,12 +434,16 @@ python convert_to_onnx.py --no_verify
 | `--opset_version` | 11 | ONNX opset version |
 | `--verify` | True | Verify ONNX model against PyTorch model |
 | `--no_verify` | False | Skip ONNX model verification |
+| `--quantization` | `none` | Quantization type: `none`, `int8`, `uint8`, `fp16` |
 
 ### Output Files
 
 After conversion, you'll find:
 
-- `models/slide_classifier_mobilenetv4.onnx` - ONNX model file
+- `models/slide_classifier_mobilenetv4.onnx` - ONNX model file (unquantized)
+- `models/slide_classifier_mobilenetv4_int8.onnx` - INT8 quantized model (if using `--quantization int8`)
+- `models/slide_classifier_mobilenetv4_uint8.onnx` - UINT8 quantized model (if using `--quantization uint8`)
+- `models/slide_classifier_mobilenetv4_fp16.onnx` - FP16 quantized model (if using `--quantization fp16`)
 - `models/model_info.json` - Model metadata and configuration
 
 ### Model Information
@@ -475,6 +461,7 @@ The conversion script generates a `model_info.json` file containing:
     "std": [0.229, 0.224, 0.225]
   },
   "model_architecture": "mobilenetv4_conv_medium.e500_r256_in1k",
+  "quantization": "int8",
   "training_info": {
     "best_val_acc": 94.32,
     "epoch": 25,
@@ -534,6 +521,47 @@ print(f"Predicted: {predicted_class} (confidence: {confidence:.3f})")
 4. **Framework Agnostic**: Use with ONNX Runtime, TensorRT, OpenVINO, etc.
 5. **Model Verification**: Automatic verification ensures output consistency
 6. **Metadata Preservation**: All training information and class mappings preserved
+7. **Quantization Support**: Multiple quantization options for optimized deployment
+
+### Quantization Options
+
+The conversion script supports several quantization methods to optimize model size and inference speed:
+
+#### INT8 Quantization (Recommended)
+- **File Size**: ~75% smaller than FP32
+- **Speed**: 2-4x faster inference
+- **Accuracy**: Minimal accuracy loss (<1%)
+- **Use Case**: Production deployment, edge devices
+
+#### UINT8 Quantization
+- **File Size**: ~75% smaller than FP32
+- **Speed**: 2-4x faster inference
+- **Accuracy**: Similar to INT8
+- **Use Case**: Specific hardware requirements
+
+#### FP16 Quantization (Half Precision)
+- **File Size**: ~50% smaller than FP32
+- **Speed**: 1.5-2x faster inference
+- **Accuracy**: Negligible accuracy loss
+- **Use Case**: GPU deployment, balanced size/accuracy
+
+#### No Quantization (Default)
+- **File Size**: Full precision (largest)
+- **Speed**: Baseline inference speed
+- **Accuracy**: Maximum accuracy
+- **Use Case**: Development, maximum precision requirements
+
+**Installation Requirements for Quantization:**
+```bash
+pip install onnxruntime onnxconverter-common
+```
+
+**Important Notes for Quantized Models:**
+- Quantized models may not be verifiable on all systems due to ONNX Runtime limitations
+- The conversion process will succeed, but verification might fail with "ConvInteger not implemented"
+- This is normal behavior - the quantized model is still valid and usable
+- For deployment, ensure your target environment supports quantized ONNX operators
+- Consider using ONNX Runtime with CPU execution provider (MLAS) for quantized model inference
 
 ### Deployment Options
 
