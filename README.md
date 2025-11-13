@@ -2,6 +2,25 @@
 
 A PyTorch-based image classification system optimized for M4 Mac mini with Metal acceleration. This project trains a MobileNetV4 model to classify different types of slide presentations and screen states.
 
+## Two Training Approaches
+
+This project provides two training and inference implementations:
+
+### 1. Standard Version (PIL-based)
+- **Files**: `train.py`, `inference.py`
+- **Preprocessing**: PIL/Pillow with torchvision transforms
+- **Use Case**: Standard PyTorch workflow, faster development
+- **Model Output**: `slide_classifier_mobilenetv4.pth`
+
+### 2. OpenCV Version (Cross-platform Compatible)
+- **Files**: `train_opencv.py`, `inference_opencv.py`
+- **Preprocessing**: OpenCV with `cv2.INTER_AREA` interpolation
+- **Use Case**: Production deployment requiring identical results across Python, JavaScript, and C++
+- **Model Output**: `slide_classifier_mobilenetv4_opencv.pth`
+- **Key Benefit**: 100% consistent preprocessing across all platforms
+
+**Recommendation**: Use the OpenCV version if you need to deploy the model in C++ or JavaScript environments, or if you require exact reproducibility across different platforms.
+
 ## Dataset Structure
 
 The dataset contains 7 classes with significant imbalance:
@@ -19,7 +38,9 @@ dataset/
 
 ## Environment Setup
 
-For reference:
+### Standard Training (PIL-based)
+
+For standard training with PIL/Pillow preprocessing:
 
 ```bash
 conda create --name trainning python=3.11
@@ -28,6 +49,21 @@ conda install pytorch torchvision torchaudio -c pytorch
 pip install "numpy<2.0"
 pip install transformers datasets timm pillow scikit-learn
 ```
+
+### OpenCV Training (Cross-platform Compatible)
+
+For training with OpenCV preprocessing (ensures identical results across Python, JavaScript, and C++):
+
+```bash
+conda create --name trainning python=3.11
+conda activate trainning
+conda install pytorch torchvision torchaudio -c pytorch
+pip install "numpy<2.0"
+pip install transformers datasets timm scikit-learn
+pip install "opencv-python<4.10.0"
+```
+
+**Note**: The OpenCV version uses `cv2.INTER_AREA` for resizing, which matches C++ implementations exactly. Use this version if you need cross-platform consistency. We use `opencv-python<4.10.0` to ensure compatibility with `numpy<2.0` required by PyTorch.
 
 ## Model Architecture
 
@@ -70,6 +106,8 @@ pip install transformers datasets timm pillow scikit-learn
 
 ### Training
 
+#### Standard Training (PIL-based)
+
 **Basic Training:**
 ```bash
 python train.py
@@ -95,6 +133,31 @@ python train.py --fast_mode
 ```bash
 python train.py --batch_size 96 --num_workers 6 --learning_rate 0.0005 --early_stopping_patience 15
 ```
+
+#### OpenCV Training (Cross-platform Compatible)
+
+Use `train_opencv.py` for training with OpenCV preprocessing. This ensures 100% identical preprocessing across Python, JavaScript, and C++ implementations.
+
+**Basic Training:**
+```bash
+python train_opencv.py
+```
+
+**Fast Mode (Recommended for M4 Mac):**
+```bash
+python train_opencv.py --fast_mode
+```
+
+**Custom Configuration:**
+```bash
+python train_opencv.py --batch_size 96 --num_workers 6 --learning_rate 0.0005 --early_stopping_patience 15
+```
+
+**Key Differences:**
+- Uses `cv2.INTER_AREA` interpolation (matches C++ exactly)
+- Custom OpenCV-based color augmentation
+- Saves to `slide_classifier_mobilenetv4_opencv.pth` by default
+- Includes preprocessing metadata in checkpoint
 
 ### Command Line Arguments
 
@@ -281,6 +344,8 @@ After training:
 
 ### Using the Inference Script (Recommended)
 
+#### Standard Inference (PIL-based)
+
 The project includes a comprehensive inference script (`inference.py`) for easy model usage:
 
 **Basic Usage:**
@@ -303,6 +368,33 @@ python inference.py --show_probabilities
 # Set confidence threshold
 python inference.py --confidence_threshold 0.7
 ```
+
+#### OpenCV Inference (Cross-platform Compatible)
+
+Use `inference_opencv.py` for inference with OpenCV preprocessing. This ensures consistent results with models trained using `train_opencv.py`.
+
+**Basic Usage:**
+```bash
+# Process all images in test directory (default)
+python inference_opencv.py
+
+# Process a single image
+python inference_opencv.py --input path/to/image.png
+
+# Process a specific directory
+python inference_opencv.py --input path/to/directory
+
+# Use OpenCV-trained model
+python inference_opencv.py --model models/slide_classifier_mobilenetv4_opencv.pth
+
+# Save results to JSON file
+python inference_opencv.py --output results.json
+
+# Show detailed probabilities for all classes
+python inference_opencv.py --show_probabilities
+```
+
+**Important**: Always use `inference_opencv.py` with models trained using `train_opencv.py` to ensure preprocessing consistency.
 
 **Command Line Arguments:**
 
