@@ -23,16 +23,12 @@ This project provides two training and inference implementations:
 
 ## Dataset Structure
 
-The dataset contains 7 classes with significant imbalance:
+The dataset contains classes with significant imbalance:
 
 ```
 dataset/
-├── may_be_slide_powerpoint_edit_mode/
-├── may_be_slide_powerpoint_side_screen/
-├── not_slide_black_or_blue_screen/
-├── not_slide_desktop/
-├── not_slide_no_signal/
-├── not_slide_others/
+├── may_be_slide/
+├── not_slide/
 └── slide/
 ```
 

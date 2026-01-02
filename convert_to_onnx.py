@@ -4,6 +4,7 @@ Convert trained MobileNetV4 slide classifier to ONNX format
 """
 
 import os
+import json
 import torch
 import torch.nn as nn
 import timm
@@ -81,6 +82,70 @@ def convert_to_onnx(model, output_path, input_shape=(1, 3, 256, 256), opset_vers
     )
 
     print(f"Model successfully exported to: {output_path}")
+
+def embed_metadata_in_onnx(onnx_path, class_names, model_info=None):
+    """
+    Embed class names and model metadata into ONNX model's custom metadata.
+
+    This allows the C++ inference code to read class names directly from the
+    model file instead of requiring a separate JSON file.
+
+    Args:
+        onnx_path: Path to the ONNX model file
+        class_names: List of class names (in order matching model output)
+        model_info: Optional dict with additional model information
+    """
+    print(f"Embedding metadata into ONNX model...")
+
+    # Load the ONNX model
+    model = onnx.load(onnx_path)
+
+    # Add class_names as JSON array
+    meta_class_names = model.metadata_props.add()
+    meta_class_names.key = "class_names"
+    meta_class_names.value = json.dumps(class_names)
+
+    # Add num_classes
+    meta_num_classes = model.metadata_props.add()
+    meta_num_classes.key = "num_classes"
+    meta_num_classes.value = str(len(class_names))
+
+    # Add input dimensions
+    meta_input_height = model.metadata_props.add()
+    meta_input_height.key = "input_height"
+    meta_input_height.value = "256"
+
+    meta_input_width = model.metadata_props.add()
+    meta_input_width.key = "input_width"
+    meta_input_width.value = "256"
+
+    # Add normalization parameters (ImageNet defaults)
+    meta_norm_mean = model.metadata_props.add()
+    meta_norm_mean.key = "normalization_mean"
+    meta_norm_mean.value = json.dumps([0.485, 0.456, 0.406])
+
+    meta_norm_std = model.metadata_props.add()
+    meta_norm_std.key = "normalization_std"
+    meta_norm_std.value = json.dumps([0.229, 0.224, 0.225])
+
+    # Add model architecture info
+    meta_arch = model.metadata_props.add()
+    meta_arch.key = "model_architecture"
+    meta_arch.value = "mobilenetv4_conv_medium.e500_r256_in1k"
+
+    # Add optional model_info as JSON if provided
+    if model_info:
+        meta_info = model.metadata_props.add()
+        meta_info.key = "model_info"
+        meta_info.value = json.dumps(model_info)
+
+    # Save the modified model
+    onnx.save(model, onnx_path)
+
+    print(f"Metadata embedded successfully:")
+    print(f"  - class_names: {class_names}")
+    print(f"  - num_classes: {len(class_names)}")
+    print(f"  - input_size: 256x256")
 
 def verify_onnx_model(onnx_path, pytorch_model, test_input=None, is_quantized=False):
     """Verify that ONNX model produces same outputs as PyTorch model"""
@@ -334,6 +399,14 @@ def main():
             # Quantize the model
             quantization_success = quantize_onnx_model(temp_output_path, output_path, args.quantization)
 
+            # Embed metadata into quantized model before cleanup
+            if quantization_success:
+                embed_metadata_in_onnx(output_path, class_names, {
+                    'quantization': args.quantization,
+                    'best_val_acc': checkpoint_info.get('best_val_acc', 'unknown'),
+                    'epoch': checkpoint_info.get('epoch', 'unknown')
+                })
+
             # Clean up temporary file
             import shutil
             shutil.rmtree(temp_dir)
@@ -348,6 +421,12 @@ def main():
                     input_shape=(1, 3, 256, 256),
                     opset_version=args.opset_version
                 )
+                # Embed metadata into fallback model
+                embed_metadata_in_onnx(output_path, class_names, {
+                    'quantization': 'none',
+                    'best_val_acc': checkpoint_info.get('best_val_acc', 'unknown'),
+                    'epoch': checkpoint_info.get('epoch', 'unknown')
+                })
         else:
             # Convert to ONNX (no quantization)
             convert_to_onnx(
@@ -356,6 +435,13 @@ def main():
                 input_shape=(1, 3, 256, 256),
                 opset_version=args.opset_version
             )
+
+        # Embed metadata into the ONNX model
+        embed_metadata_in_onnx(output_path, class_names, {
+            'quantization': args.quantization,
+            'best_val_acc': checkpoint_info.get('best_val_acc', 'unknown'),
+            'epoch': checkpoint_info.get('epoch', 'unknown')
+        })
 
         # Verify model if requested
         if args.verify:
